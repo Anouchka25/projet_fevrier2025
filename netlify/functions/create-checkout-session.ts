@@ -73,68 +73,54 @@ const handler: Handler = async (event) => {
     // Convert amount to cents
     const amountInCents = Math.round(amount * 100);
 
-    // Create Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: getPaymentMethodTypes(paymentMethod),
-      line_items: [{
-        price_data: {
-          currency: currency.toLowerCase(),
-          product_data: {
-            name: 'Transfert KundaPay',
-            description: `Référence: ${transferReference}`,
-          },
-          unit_amount: amountInCents,
-        },
-        quantity: 1,
-      }],
-      mode: 'payment',
-      success_url: `${process.env.URL || 'http://localhost:5173'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.URL || 'http://localhost:5173'}/transfer`,
+    // Create payment intent with automatic payment methods
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: currency.toLowerCase(),
       metadata: {
         direction,
         transferReference,
         recipientId
       },
-      locale: 'fr'
+      statement_descriptor: 'KUNDAPAY',
+      statement_descriptor_suffix: transferReference.slice(0, 22),
+      capture_method: 'automatic',
+      automatic_payment_methods: {
+        enabled: true,
+        allow_redirects: 'always'
+      }
     });
-
-    if (!session?.url) {
-      throw new Error('Failed to create checkout session');
-    }
 
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        sessionUrl: session.url,
-        sessionId: session.id
+        clientSecret: paymentIntent.client_secret
       })
     };
   } catch (error) {
     console.error('Stripe error:', error);
 
+    if (error instanceof Stripe.errors.StripeError) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'Payment Error',
+          message: error.message
+        })
+      };
+    }
+
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
-        error: 'Payment initialization failed',
-        message: error instanceof Error ? error.message : 'An unexpected error occurred'
+        error: 'Server Error',
+        message: 'An unexpected error occurred'
       })
     };
   }
 };
-
-function getPaymentMethodTypes(paymentMethod: string): Stripe.Checkout.SessionCreateParams.PaymentMethodType[] {
-  switch (paymentMethod) {
-    case 'CARD':
-      return ['card'];
-    case 'ACH':
-      return ['us_bank_account'];
-    case 'PAYPAL':
-      return ['paypal'];
-    default:
-      return ['card'];
-  }
-}
 
 export { handler };
