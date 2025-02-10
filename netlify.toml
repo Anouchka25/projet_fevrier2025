@@ -8,7 +8,7 @@
   external_node_modules = ["stripe"]
 
 [[redirects]]
-  from = "/.netlify/functions/*"
+  from = "/*"
   to = "/.netlify/functions/:splat"
   status = 200
   force = true
@@ -17,6 +17,7 @@
   from = "/*"
   to = "/index.html"
   status = 200
+  
 
 [build.environment]
   NODE_VERSION = "20"
