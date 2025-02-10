@@ -125,7 +125,7 @@ const handler: Handler = async (event) => {
   }
 };
 
-function getPaymentMethodTypes(paymentMethod: string): string[] {
+function getPaymentMethodTypes(paymentMethod: string): Stripe.Checkout.SessionCreateParams.PaymentMethodType[]  {
   switch (paymentMethod) {
     case 'CARD':
       return ['card'];
