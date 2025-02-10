@@ -12,8 +12,14 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      navigate('/');
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // Clear any stored data
+      localStorage.clear();
+      
+      // Force navigation to home page
+      window.location.href = '/';
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
     }
@@ -38,7 +44,7 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
               <img 
-                src="/KundaPay.svg" 
+                src="/KundaPay2.svg" 
                 alt="KundaPay Logo" 
                 className="h-10"
               />
@@ -108,10 +114,7 @@ const Navbar = () => {
                         Mon profil
                       </Link>
                       <button
-                        onClick={() => {
-                          handleLogout();
-                          closeAllMenus();
-                        }}
+                        onClick={handleLogout}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                         role="menuitem"
                       >
@@ -176,10 +179,7 @@ const Navbar = () => {
                     Mon profil
                   </Link>
                   <button
-                    onClick={() => {
-                      handleLogout();
-                      closeAllMenus();
-                    }}
+                    onClick={handleLogout}
                     className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
                   >
                     Déconnexion
