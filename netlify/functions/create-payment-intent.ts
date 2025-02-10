@@ -131,12 +131,8 @@ function getPaymentMethodTypes(paymentMethod: string): Stripe.Checkout.SessionCr
       return ['card'];
     case 'ACH':
       return ['us_bank_account'];
-    case 'APPLE_PAY':
-      return ['apple_pay'];
     case 'PAYPAL':
       return ['paypal'];
-    case 'INTERAC':
-      return ['interac_present'];
     default:
       return ['card'];
   }
