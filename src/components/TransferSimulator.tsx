@@ -240,13 +240,11 @@ const TransferSimulator = () => {
         return [
           { value: 'CARD', label: PAYMENT_METHODS.CARD },
           { value: 'ACH', label: PAYMENT_METHODS.ACH },
-          { value: 'APPLE_PAY', label: PAYMENT_METHODS.APPLE_PAY },
           { value: 'PAYPAL', label: PAYMENT_METHODS.PAYPAL }
         ];
       case 'CANADA_TO_GABON':
         return [
           { value: 'CARD', label: PAYMENT_METHODS.CARD },
-          { value: 'INTERAC', label: PAYMENT_METHODS.INTERAC },
           { value: 'PAYPAL', label: PAYMENT_METHODS.PAYPAL }
         ];
       case 'GABON_TO_USA':
@@ -285,7 +283,6 @@ const TransferSimulator = () => {
         ];
       case 'GABON_TO_CANADA':
         return [
-          { value: 'INTERAC', label: RECEIVING_METHODS.INTERAC },
           { value: 'VISA_DIRECT', label: RECEIVING_METHODS.VISA_DIRECT },
           { value: 'MASTERCARD_SEND', label: RECEIVING_METHODS.MASTERCARD_SEND }
         ];

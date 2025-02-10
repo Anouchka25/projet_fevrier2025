@@ -64,15 +64,11 @@ export async function createPaymentIntent({
 export function getPaymentMethodTypes(paymentMethod: string): string[] {
   switch (paymentMethod) {
     case 'CARD':
-      return ['card'];
+      return ['card']; // Inclut automatiquement Apple Pay et autres méthodes de paiement par carte
     case 'ACH':
       return ['us_bank_account'];
-    case 'APPLE_PAY':
-      return ['apple_pay'];
     case 'PAYPAL':
       return ['paypal'];
-    case 'INTERAC':
-      return ['interac_present'];
     default:
       return ['card'];
   }

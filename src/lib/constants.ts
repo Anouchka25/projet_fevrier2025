@@ -1,8 +1,8 @@
 // Currency codes
 export type CountryCode = 'GA' | 'FR' | 'CN' | 'US' | 'CA';
 export type CurrencyCode = 'XAF' | 'EUR' | 'CNY' | 'USD' | 'CAD';
-export type PaymentMethod = 'AIRTEL_MONEY' | 'CASH' | 'BANK_TRANSFER' | 'ALIPAY' | 'CARD' | 'ACH' | 'INTERAC' | 'APPLE_PAY' | 'PAYPAL' | 'WERO';
-export type ReceivingMethod = 'AIRTEL_MONEY' | 'CASH' | 'BANK_TRANSFER' | 'ALIPAY' | 'CARD' | 'ACH' | 'INTERAC' | 'VISA_DIRECT' | 'MASTERCARD_SEND' | 'WERO';
+export type PaymentMethod = 'AIRTEL_MONEY' | 'CASH' | 'BANK_TRANSFER' | 'ALIPAY' | 'CARD' | 'ACH' | 'PAYPAL' | 'WERO';
+export type ReceivingMethod = 'AIRTEL_MONEY' | 'CASH' | 'BANK_TRANSFER' | 'ALIPAY' | 'CARD' | 'ACH' | 'VISA_DIRECT' | 'MASTERCARD_SEND' | 'WERO';
 export type TransferDirection = 'GABON_TO_CHINA' | 'FRANCE_TO_GABON' | 'GABON_TO_FRANCE' | 'USA_TO_GABON' | 'GABON_TO_USA' | 'CANADA_TO_GABON' | 'GABON_TO_CANADA';
 
 // Country information with proper flag URLs
@@ -43,8 +43,6 @@ export const PAYMENT_METHODS: Record<PaymentMethod, string> = {
   ALIPAY: 'Alipay',
   CARD: 'Carte bancaire',
   ACH: 'Virement ACH',
-  INTERAC: 'Virement Interac',
-  APPLE_PAY: 'Apple Pay',
   PAYPAL: 'PayPal'
 };
 
@@ -56,7 +54,6 @@ export const RECEIVING_METHODS: Record<ReceivingMethod, string> = {
   ALIPAY: 'Alipay',
   CARD: 'Carte bancaire',
   ACH: 'Dépôt ACH',
-  INTERAC: 'Dépôt Interac',
   VISA_DIRECT: 'Visa Direct',
   MASTERCARD_SEND: 'Mastercard Send',
   WERO: 'Wero'
