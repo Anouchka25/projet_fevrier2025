@@ -21,57 +21,14 @@ export function formatCurrency(amount: number, currency: string): string {
   }).format(amount);
 }
 
-// Default values for transfer conditions
-const DEFAULT_CONDITIONS = {
-  MAX_AMOUNT_PER_TRANSFER: { value: 500, currency: 'EUR' },
-  MAX_AMOUNT_PER_YEAR: { value: 5000, currency: 'EUR' },
-  MAX_TRANSFERS_WITHOUT_ID: { value: 10, currency: 'COUNT' }
-};
-
-// Get transfer conditions with fallback to defaults
-export async function getTransferConditions() {
-  try {
-    const { data, error } = await supabase
-      .from('transfer_conditions')
-      .select('name, value, currency')
-      .eq('name', 'MAX_AMOUNT_PER_TRANSFER')
-      .maybeSingle();
-
-    if (error) {
-      console.error('Failed to fetch transfer conditions:', error);
-      return DEFAULT_CONDITIONS.MAX_AMOUNT_PER_TRANSFER;
-    }
-
-    if (!data) {
-      console.warn('No transfer conditions found, using defaults');
-      return DEFAULT_CONDITIONS.MAX_AMOUNT_PER_TRANSFER;
-    }
-
-    return {
-      value: data.value,
-      currency: data.currency
-    };
-  } catch (err) {
-    console.error('Error fetching transfer conditions:', err);
-    return DEFAULT_CONDITIONS.MAX_AMOUNT_PER_TRANSFER;
-  }
-}
-
-// Generate a transfer reference
-export function generateTransferReference(): string {
-  const prefix = 'KP';
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `${prefix}${timestamp}${random}`;
-}
-
 // Calculate transfer details
 export async function calculateTransferDetails(
   amount: number,
   direction: TransferDirection,
   paymentMethod: PaymentMethod,
   receivingMethod: ReceivingMethod,
-  isReceiveAmount: boolean = false
+  isReceiveAmount: boolean = false,
+  promoCode?: string
 ) {
   try {
     // Validate amount
@@ -117,19 +74,9 @@ export async function calculateTransferDetails(
       .eq('receiving_method', receivingMethod)
       .single();
 
-    if (feesError) {
+    if (feesError || !fees) {
       console.error('Error fetching fees:', feesError);
-      throw new Error(`Frais non disponibles pour cette combinaison (${fromCountry} -> ${toCountry})`);
-    }
-
-    if (!fees) {
-      console.error('No fees found for:', {
-        fromCountry,
-        toCountry,
-        paymentMethod,
-        receivingMethod
-      });
-      throw new Error(`Frais non disponibles pour cette combinaison (${fromCountry} -> ${toCountry})`);
+      throw new Error(`Frais non disponibles pour cette combinaison (${fromCountry} → ${toCountry})`);
     }
 
     // Determine currencies
@@ -150,25 +97,58 @@ export async function calculateTransferDetails(
       default: toCurrency = 'XAF';
     }
 
-    // Get exchange rate from database
-    const { data: rate, error: rateError } = await supabase
-      .from('exchange_rates')
-      .select('rate')
-      .eq('from_currency', fromCurrency)
-      .eq('to_currency', toCurrency)
-      .single();
+    // Get exchange rate
+    const exchangeRate = await getExchangeRate(fromCurrency, toCurrency);
 
-    if (rateError) {
-      console.error('Error fetching exchange rate:', rateError);
-      throw new Error(`Taux de change non disponible (${fromCurrency} -> ${toCurrency})`);
-    }
+    // Apply promo code if provided
+    let effectiveFeePercentage = fees.fee_percentage;
+    let promoCodeId = null;
 
-    if (!rate) {
-      console.error('No exchange rate found for:', {
-        fromCurrency,
-        toCurrency
-      });
-      throw new Error(`Taux de change non disponible (${fromCurrency} -> ${toCurrency})`);
+    if (promoCode) {
+      try {
+        const { data: validation, error: validationError } = await supabase
+          .rpc('validate_promo_code', {
+            code_text: promoCode,
+            transfer_direction: direction
+          })
+          .single();
+
+        if (validationError) {
+          console.error('Promo code validation error:', validationError);
+          throw new Error('Erreur lors de la validation du code promo');
+        }
+
+        if (!validation) {
+          throw new Error('Code promo invalide');
+        }
+
+        if (validation.valid) {
+          if (validation.discount_type === 'PERCENTAGE') {
+            effectiveFeePercentage *= (1 - validation.discount_value / 100);
+          } else if (validation.discount_type === 'FIXED') {
+            // Pour les réductions fixes, on les convertit en pourcentage basé sur le montant
+            const fixedDiscount = validation.discount_value / amount;
+            effectiveFeePercentage = Math.max(0, effectiveFeePercentage - fixedDiscount);
+          }
+
+          // Get promo code ID for tracking
+          const { data: promoData } = await supabase
+            .from('promo_codes')
+            .select('id')
+            .eq('code', promoCode)
+            .eq('direction', direction)
+            .single();
+
+          if (promoData) {
+            promoCodeId = promoData.id;
+          }
+        } else {
+          throw new Error(validation.message || 'Code promo invalide');
+        }
+      } catch (error) {
+        console.error('Error validating promo code:', error);
+        throw error;
+      }
     }
 
     let amountSent: number;
@@ -177,11 +157,11 @@ export async function calculateTransferDetails(
     if (isReceiveAmount) {
       // Calculate from receive amount
       amountReceived = amount;
-      amountSent = amount / (rate.rate * (1 - fees.fee_percentage));
+      amountSent = amount / (exchangeRate * (1 - effectiveFeePercentage));
     } else {
       // Calculate from send amount
       amountSent = amount;
-      amountReceived = amount * (1 - fees.fee_percentage) * rate.rate;
+      amountReceived = amount * (1 - effectiveFeePercentage) * exchangeRate;
     }
 
     // Round amounts according to currency
@@ -192,7 +172,7 @@ export async function calculateTransferDetails(
       amountReceived = Math.floor(amountReceived / 5) * 5;
     }
 
-    const feeAmount = amountSent * fees.fee_percentage;
+    const feeAmount = amountSent * effectiveFeePercentage;
 
     return {
       amountSent,
@@ -200,13 +180,49 @@ export async function calculateTransferDetails(
       amountReceived,
       senderCurrency: fromCurrency,
       receiverCurrency: toCurrency,
-      exchangeRate: rate.rate,
+      exchangeRate,
       direction,
       paymentMethod,
-      receivingMethod
+      receivingMethod,
+      promoCodeId,
+      originalFeePercentage: fees.fee_percentage,
+      effectiveFeePercentage
     };
   } catch (error) {
     console.error('Error in calculateTransferDetails:', error);
     throw error;
   }
+}
+
+// Get exchange rate for specific currencies
+async function getExchangeRate(fromCurrency: string, toCurrency: string): Promise<number> {
+  // If currencies are the same, return 1
+  if (fromCurrency === toCurrency) {
+    return 1;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .select('rate')
+      .eq('from_currency', fromCurrency)
+      .eq('to_currency', toCurrency)
+      .single();
+
+    if (error) throw error;
+    if (!data) throw new Error('Exchange rate not found');
+    
+    return data.rate;
+  } catch (err) {
+    console.error('Failed to fetch exchange rate:', err);
+    throw new Error(`Taux de change non disponible (${fromCurrency} → ${toCurrency})`);
+  }
+}
+
+// Generate a transfer reference
+export function generateTransferReference(): string {
+  const prefix = 'KP';
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}${timestamp}${random}`;
 }

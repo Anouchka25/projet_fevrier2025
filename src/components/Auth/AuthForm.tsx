@@ -77,7 +77,6 @@ const AuthForm = () => {
 
     try {
       if (isLogin) {
-        // Login
         const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email: formData.email.toLowerCase().trim(),
           password: formData.password
@@ -113,19 +112,7 @@ const AuthForm = () => {
         const pendingTransfer = localStorage.getItem('transferDetails');
         navigate(pendingTransfer ? '/transfer' : '/dashboard');
       } else {
-        // Check if email exists
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('email')
-          .eq('email', formData.email.toLowerCase().trim())
-          .single();
-
-        if (existingUser) {
-          setErrors({ auth: 'Cet email est déjà utilisé' });
-          return;
-        }
-
-        // Create new user
+        // Sign up
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: formData.email.toLowerCase().trim(),
           password: formData.password,
@@ -164,7 +151,8 @@ const AuthForm = () => {
           }]);
 
         if (profileError) {
-          await supabase.auth.admin.deleteUser(data.user.id);
+          // If profile creation fails, sign out
+          await supabase.auth.signOut();
           setErrors({ auth: 'Erreur lors de la création du profil' });
           return;
         }
@@ -174,6 +162,7 @@ const AuthForm = () => {
         navigate(pendingTransfer ? '/transfer' : '/dashboard');
       }
     } catch (error) {
+      console.error('Auth error:', error);
       setErrors({
         auth: 'Une erreur inattendue est survenue. Veuillez réessayer.'
       });

@@ -73,11 +73,10 @@ const handler: Handler = async (event) => {
     // Convert amount to cents
     const amountInCents = Math.round(amount * 100);
 
-    // Create payment intent
+    // Create payment intent with automatic payment methods
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: currency.toLowerCase(),
-      payment_method_types: getPaymentMethodTypes(paymentMethod),
       metadata: {
         direction,
         transferReference,
@@ -86,7 +85,6 @@ const handler: Handler = async (event) => {
       statement_descriptor: 'KUNDAPAY',
       statement_descriptor_suffix: transferReference.slice(0, 22),
       capture_method: 'automatic',
-      setup_future_usage: 'off_session',
       automatic_payment_methods: {
         enabled: true,
         allow_redirects: 'always'
@@ -124,18 +122,5 @@ const handler: Handler = async (event) => {
     };
   }
 };
-
-function getPaymentMethodTypes(paymentMethod: string): string[] {
-  switch (paymentMethod) {
-    case 'CARD':
-      return ['card']; // Inclut automatiquement Apple Pay et autres méthodes de paiement par carte
-    case 'ACH':
-      return ['us_bank_account'];
-    case 'PAYPAL':
-      return ['paypal'];
-    default:
-      return ['card'];
-  }
-}
 
 export { handler };

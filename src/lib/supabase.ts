@@ -60,6 +60,38 @@ export async function getExchangeRates() {
   }
 }
 
+// Get exchange rate for specific currencies
+export async function getExchangeRate(fromCurrency: string, toCurrency: string): Promise<number> {
+  // If currencies are the same, return 1
+  if (fromCurrency === toCurrency) {
+    return 1;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('exchange_rates')
+      .select('rate')
+      .eq('from_currency', fromCurrency)
+      .eq('to_currency', toCurrency)
+      .single();
+
+    if (error) throw error;
+    if (!data) throw new Error('Exchange rate not found');
+    
+    return data.rate;
+  } catch (err) {
+    console.error('Failed to fetch exchange rate:', err);
+    // Try to find rate in defaults
+    const defaultRate = DEFAULT_EXCHANGE_RATES.find(
+      rate => rate.from_currency === fromCurrency && rate.to_currency === toCurrency
+    );
+    if (defaultRate) {
+      return defaultRate.rate;
+    }
+    throw new Error(`Taux de change non disponible (${fromCurrency} -> ${toCurrency})`);
+  }
+}
+
 // Get transfer fees with fallback
 export async function getTransferFees() {
   try {

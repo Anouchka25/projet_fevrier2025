@@ -25,7 +25,12 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        if (!user?.id) return;
+        setLoading(true);
+        setError(null);
+
+        if (!user?.id) {
+          throw new Error('Utilisateur non connecté');
+        }
 
         // Récupérer le profil utilisateur
         const { data: profileData, error: profileError } = await supabase
@@ -34,7 +39,15 @@ const Dashboard = () => {
           .eq('id', user.id)
           .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Erreur profil:', profileError);
+          throw new Error('Erreur lors de la récupération du profil');
+        }
+
+        if (!profileData) {
+          throw new Error('Profil non trouvé');
+        }
+
         setProfile(profileData);
 
         // Récupérer les transferts avec les bénéficiaires
@@ -47,11 +60,15 @@ const Dashboard = () => {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
-        if (transfersError) throw transfersError;
+        if (transfersError) {
+          console.error('Erreur transferts:', transfersError);
+          throw new Error('Erreur lors de la récupération des transferts');
+        }
+
         setTransfers(transfersData as TransferWithBeneficiary[]);
       } catch (err) {
-        console.error('Erreur lors de la récupération des données:', err);
-        setError('Une erreur est survenue lors du chargement de vos données');
+        console.error('Erreur complète:', err);
+        setError(err instanceof Error ? err.message : 'Une erreur est survenue lors du chargement de vos données');
       } finally {
         setLoading(false);
       }
@@ -74,6 +91,30 @@ const Dashboard = () => {
         <div className="max-w-7xl mx-auto">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-red-700">{error}</p>
+            <button
+              onClick={() => navigate('/')}
+              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+            >
+              Retour à l'accueil
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <p className="text-yellow-700">Profil non trouvé. Veuillez vous reconnecter.</p>
+            <button
+              onClick={() => navigate('/auth')}
+              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700"
+            >
+              Se connecter
+            </button>
           </div>
         </div>
       </div>
@@ -97,38 +138,36 @@ const Dashboard = () => {
         {/* Informations du profil */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Mon Profil</h2>
-          {profile && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <p className="text-sm text-gray-500">Nom complet</p>
-                <p className="text-lg font-medium text-gray-900">
-                  {profile.first_name} {profile.last_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Email</p>
-                <p className="text-lg font-medium text-gray-900">{profile.email}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Pays</p>
-                <p className="text-lg font-medium text-gray-900">
-                  {profile.country === 'GA' ? 'Gabon' : 
-                   profile.country === 'FR' ? 'France' : 
-                   profile.country === 'CN' ? 'Chine' : profile.country}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Membre depuis</p>
-                <p className="text-lg font-medium text-gray-900">
-                  {new Date(profile.created_at).toLocaleDateString('fr-FR', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm text-gray-500">Nom complet</p>
+              <p className="text-lg font-medium text-gray-900">
+                {profile.first_name} {profile.last_name}
+              </p>
             </div>
-          )}
+            <div>
+              <p className="text-sm text-gray-500">Email</p>
+              <p className="text-lg font-medium text-gray-900">{profile.email}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Pays</p>
+              <p className="text-lg font-medium text-gray-900">
+                {profile.country === 'GA' ? 'Gabon' : 
+                 profile.country === 'FR' ? 'France' : 
+                 profile.country === 'CN' ? 'Chine' : profile.country}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Membre depuis</p>
+              <p className="text-lg font-medium text-gray-900">
+                {new Date(profile.created_at).toLocaleDateString('fr-FR', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Historique des transferts */}

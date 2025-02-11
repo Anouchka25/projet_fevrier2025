@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/Auth/AuthProvider';
 import { supabase } from '../lib/supabase';
 import { calculateTransferDetails } from '../lib/utils';
-import { ArrowRight, ArrowUpDown } from 'lucide-react';
-import type { MaxAmount } from '../lib/types';
+import { ArrowRight, ArrowUpDown, Loader2 } from 'lucide-react';
+import type { MaxAmount, PromoCodeValidation } from '../lib/types';
 import type { TransferDirection, PaymentMethod, ReceivingMethod, CountryCode } from '../lib/constants';
 import { COUNTRIES, PAYMENT_METHODS, RECEIVING_METHODS } from '../lib/constants';
 
@@ -22,7 +22,9 @@ const TransferSimulator = () => {
   const [loading, setLoading] = useState(false);
   const [maxAmount, setMaxAmount] = useState<MaxAmount | null>(null);
   const [isReceiveAmount, setIsReceiveAmount] = useState<boolean>(false);
-  const [currentExchangeRate, setCurrentExchangeRate] = useState<number | null>(null);
+  const [promoCode, setPromoCode] = useState<string>('');
+  const [promoCodeValidation, setPromoCodeValidation] = useState<PromoCodeValidation | null>(null);
+  const [validatingPromoCode, setValidatingPromoCode] = useState(false);
 
   useEffect(() => {
     if (user?.user_metadata?.country) {
@@ -73,31 +75,41 @@ const TransferSimulator = () => {
       const defaultMethods = getDefaultMethods(newDirection);
       setPaymentMethod(defaultMethods.payment);
       setReceivingMethod(defaultMethods.receiving);
+      setPromoCode('');
+      setPromoCodeValidation(null);
     }
   }, [senderCountry, receiverCountry]);
 
-  useEffect(() => {
-    const fetchExchangeRate = async () => {
-      try {
-        const { data: rates, error } = await supabase
-          .from('exchange_rates')
-          .select('rate')
-          .eq('from_currency', getSenderCurrency())
-          .eq('to_currency', getReceiverCurrency())
-          .single();
-
-        if (error) throw error;
-        setCurrentExchangeRate(rates.rate);
-      } catch (err) {
-        console.error('Error fetching exchange rate:', err);
-        setCurrentExchangeRate(null);
-      }
-    };
-
-    if (senderCountry && receiverCountry) {
-      fetchExchangeRate();
+  const validatePromoCode = async (code: string) => {
+    if (!code) {
+      setPromoCodeValidation(null);
+      return;
     }
-  }, [senderCountry, receiverCountry]);
+
+    setValidatingPromoCode(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('validate_promo_code', {
+          code_text: code,
+          transfer_direction: direction
+        })
+        .single();
+
+      if (error) throw error;
+
+      setPromoCodeValidation(data);
+    } catch (err) {
+      console.error('Error validating promo code:', err);
+      setPromoCodeValidation({
+        valid: false,
+        message: 'Erreur lors de la validation du code promo',
+        discount_type: null,
+        discount_value: null
+      });
+    } finally {
+      setValidatingPromoCode(false);
+    }
+  };
 
   const getDefaultMethods = (dir: TransferDirection): { payment: PaymentMethod; receiving: ReceivingMethod } => {
     switch (dir) {
@@ -114,7 +126,7 @@ const TransferSimulator = () => {
       case 'CANADA_TO_GABON':
         return { payment: 'CARD', receiving: 'AIRTEL_MONEY' };
       case 'GABON_TO_CANADA':
-        return { payment: 'AIRTEL_MONEY', receiving: 'INTERAC' };
+        return { payment: 'AIRTEL_MONEY', receiving: 'VISA_DIRECT' };
       default:
         return { payment: 'BANK_TRANSFER', receiving: 'AIRTEL_MONEY' };
     }
@@ -195,7 +207,8 @@ const TransferSimulator = () => {
         ...calculation,
         direction,
         paymentMethod,
-        receivingMethod
+        receivingMethod,
+        promoCode: promoCodeValidation?.valid ? promoCode : null
       }));
       
       if (user) {
@@ -308,7 +321,8 @@ const TransferSimulator = () => {
           direction,
           paymentMethod,
           receivingMethod,
-          isReceiveAmount
+          isReceiveAmount,
+          promoCode
         );
         
         setCalculation(result);
@@ -327,7 +341,7 @@ const TransferSimulator = () => {
 
     const timeoutId = setTimeout(calculateAmount, 500);
     return () => clearTimeout(timeoutId);
-  }, [amount, direction, paymentMethod, receivingMethod, isReceiveAmount]);
+  }, [amount, direction, paymentMethod, receivingMethod, isReceiveAmount, promoCode]);
 
   const formatNumber = (value: number): string => {
     return value.toLocaleString('fr-FR', {
@@ -488,14 +502,41 @@ const TransferSimulator = () => {
                   )}
                 </div>
 
-                {currentExchangeRate && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600">Taux de change actuel :</p>
-                    <p className="text-lg font-medium text-gray-900">
-                      1 {getSenderCurrency()} = {currentExchangeRate.toFixed(2)} {getReceiverCurrency()}
-                    </p>
+                <div>
+                  <label htmlFor="promoCode" className="block text-sm font-medium text-gray-700">
+                    Code promo (optionnel)
+                  </label>
+                  <div className="mt-1 relative">
+                    <input
+                      type="text"
+                      id="promoCode"
+                      value={promoCode}
+                      onChange={(e) => {
+                        const code = e.target.value.toUpperCase();
+                        setPromoCode(code);
+                        validatePromoCode(code);
+                      }}
+                      className={`block w-full rounded-md shadow-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
+                        promoCodeValidation?.valid ? 'border-green-300' : 
+                        promoCodeValidation?.valid === false ? 'border-red-300' : 
+                        'border-gray-300'
+                      }`}
+                      placeholder="Entrez votre code promo"
+                    />
+                    {validatingPromoCode && (
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                        <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+                      </div>
+                    )}
                   </div>
-                )}
+                  {promoCodeValidation && (
+                    <p className={`mt-2 text-sm ${
+                      promoCodeValidation.valid ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {promoCodeValidation.message}
+                    </p>
+                  )}
+                </div>
 
                 {error && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -508,19 +549,26 @@ const TransferSimulator = () => {
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-gray-600">Montant à envoyer</span>
                       <span className="text-lg font-bold text-gray-900">
-                        {formatNumber(calculation.amountSent)} {calculation.senderCurrency}
+                        {calculation.amountSent.toLocaleString('fr-FR')} {calculation.senderCurrency}
                       </span>
                     </div>
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-gray-600">Frais</span>
-                      <span className="text-sm text-gray-900">
-                        {formatNumber(calculation.fees)} {calculation.senderCurrency}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-sm text-gray-900">
+                          {calculation.fees.toLocaleString('fr-FR')} {calculation.senderCurrency}
+                        </span>
+                        {calculation.originalFeePercentage !== calculation.effectiveFeePercentage && (
+                          <div className="text-xs text-green-600">
+                            Réduction appliquée : {((calculation.originalFeePercentage - calculation.effectiveFeePercentage) * 100).toFixed(2)}%
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-gray-600">Montant à recevoir</span>
                       <span className="text-lg font-bold text-green-600">
-                        {formatNumber(calculation.amountReceived)} {calculation.receiverCurrency}
+                        {calculation.amountReceived.toLocaleString('fr-FR')} {calculation.receiverCurrency}
                       </span>
                     </div>
                   </div>

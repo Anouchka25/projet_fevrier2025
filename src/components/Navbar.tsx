@@ -44,9 +44,9 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
               <img 
-                src="/KundaPay2.svg" 
+                src="/KundaPay.svg" 
                 alt="KundaPay Logo" 
-                className="h-10"
+                className="h-16"
               />
             </Link>
           </div>
