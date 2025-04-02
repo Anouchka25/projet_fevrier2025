@@ -10,51 +10,43 @@ export async function initializeOneSignal() {
       return;
     }
 
-    window.OneSignalDeferred.push(function(OneSignal) {
-      OneSignal.init({
+    window.OneSignalDeferred.push(async function(OneSignal) {
+      // Check if we're in development or production
+      const isLocalEnvironment = 
+        window.location.hostname === 'localhost' || 
+        window.location.hostname.includes('webcontainer-api.io') ||
+        window.location.hostname.includes('local-credentialless');
+      
+      if (isLocalEnvironment) {
+        console.log('OneSignal: Running in development environment - notifications disabled');
+        return; // Skip OneSignal initialization in development
+      }
+      
+      await OneSignal.init({
         appId: ONESIGNAL_APP_ID,
+        safari_web_id: "web.onesignal.auto.2b3f64b2-7083-4ec5-9c09-3f8119751fed",
         notifyButton: {
           enable: true,
-          size: 'medium',
-          theme: 'default',
-          position: 'bottom-right',
-          text: {
-            'tip.state.unsubscribed': 'Recevoir les notifications',
-            'tip.state.subscribed': 'Vous êtes inscrit aux notifications',
-            'tip.state.blocked': 'Vous avez bloqué les notifications',
-            'message.prenotify': 'Cliquez pour vous inscrire aux notifications',
-            'message.action.subscribed': 'Merci de vous être inscrit !',
-            'message.action.resubscribed': 'Vous êtes réinscrit aux notifications',
-            'message.action.unsubscribed': 'Vous ne recevrez plus de notifications',
-            'dialog.main.title': 'Gérer les notifications',
-            'dialog.main.button.subscribe': 'S\'INSCRIRE',
-            'dialog.main.button.unsubscribe': 'SE DÉSINSCRIRE',
-            'dialog.blocked.title': 'Débloquer les notifications',
-            'dialog.blocked.message': 'Suivez ces instructions pour autoriser les notifications:'
-          }
         },
-        welcomeNotification: {
-          title: "Bienvenue sur KundaPay !",
-          message: "Merci de nous faire confiance pour vos transferts d'argent."
-        }
       });
 
-      // Sauvegarder l'ID utilisateur OneSignal
-      OneSignal.getUserId().then((userId: string) => {
+      // Save OneSignal user ID to Supabase
+      try {
+        const userId = await OneSignal.getUserId();
         if (userId) {
-          supabase.auth.getUser().then(({ data: { user } }) => {
-            if (user) {
-              supabase
-                .from('users')
-                .update({ onesignal_id: userId })
-                .eq('id', user.id)
-                .then(({ error }) => {
-                  if (error) console.error('Error saving OneSignal ID:', error);
-                });
-            }
-          });
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { error } = await supabase
+              .from('users')
+              .update({ onesignal_id: userId })
+              .eq('id', user.id);
+            
+            if (error) console.error('Error saving OneSignal ID:', error);
+          }
         }
-      });
+      } catch (idError) {
+        console.error('Error getting OneSignal user ID:', idError);
+      }
     });
   } catch (error) {
     console.error('Erreur lors de l\'initialisation de OneSignal:', error);

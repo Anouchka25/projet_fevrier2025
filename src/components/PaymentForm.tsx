@@ -52,7 +52,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       setReference(newReference);
 
       if (transferDetails.paymentMethod === 'CARD') {
-        const response = await fetch('/api/create-checkout-session', {
+        const response = await fetch('/.netlify/functions/create-checkout-session', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

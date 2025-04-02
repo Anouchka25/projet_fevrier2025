@@ -37,7 +37,15 @@ export default function ProfileScreen({ navigation }) {
 
       const { data, error } = await supabase
         .from('transfers')
-        .select('*')
+        .select(`
+          *,
+          beneficiaries (
+            first_name,
+            last_name,
+            email,
+            payment_details
+          )
+        `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -104,6 +112,9 @@ export default function ProfileScreen({ navigation }) {
               <View style={styles.transferDetails}>
                 <Text>Montant envoyé: {transfer.amount_sent} {transfer.sender_currency}</Text>
                 <Text>Montant reçu: {transfer.amount_received} {transfer.receiver_currency}</Text>
+                {transfer.beneficiaries && transfer.beneficiaries.length > 0 && (
+                  <Text>Bénéficiaire: {transfer.beneficiaries[0].first_name} {transfer.beneficiaries[0].last_name}</Text>
+                )}
                 <Text style={[
                   styles.status,
                   transfer.status === 'completed' ? styles.statusCompleted :

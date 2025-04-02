@@ -21,6 +21,22 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+// Add a debug function to check connection
+export const checkSupabaseConnection = async () => {
+  try {
+    const { data, error } = await supabase.from('users').select('count').limit(1);
+    if (error) {
+      console.error('Supabase connection error:', error);
+      return false;
+    }
+    console.log('Supabase connection successful');
+    return true;
+  } catch (err) {
+    console.error('Supabase connection check failed:', err);
+    return false;
+  }
+};
+
 // Default values for when data can't be fetched
 export const DEFAULT_MAX_AMOUNT = { value: 500, currency: 'EUR' };
 

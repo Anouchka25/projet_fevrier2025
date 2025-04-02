@@ -45,7 +45,7 @@ const PAYMENT_METHODS = {
   },
   'FR': {
     'GA': [
-      { value: 'CARD', label: 'Carte Bancaire', icon: '/cb.png' },
+     // { value: 'CARD', label: 'Carte Bancaire', icon: '/cb.png' },
       { value: 'WERO', label: 'Wero ou PayLib', icon: '/wero.png' },
       { value: 'PAYPAL', label: 'PayPal', icon: '/paypal.png' },
       { value: 'BANK_TRANSFER', label: 'Virement bancaire', icon: '/virement-bancaire.jpg' }
