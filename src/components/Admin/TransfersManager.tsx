@@ -203,6 +203,30 @@ const TransfersManager = () => {
     return methods[method] || method;
   };
 
+  const getFundsOriginDisplay = (origin: string) => {
+    const origins: { [key: string]: string } = {
+      'salary': 'Salaire',
+      'savings': 'Épargne',
+      'business': 'Revenus d\'entreprise',
+      'investment': 'Investissements',
+      'gift': 'Don',
+      'other': 'Autre'
+    };
+    return origins[origin] || origin || 'Non spécifié';
+  };
+
+  const getTransferReasonDisplay = (reason: string) => {
+    const reasons: { [key: string]: string } = {
+      'family_support': 'Soutien familial',
+      'business': 'Affaires',
+      'education': 'Éducation',
+      'medical': 'Frais médicaux',
+      'travel': 'Voyage',
+      'other': 'Autre'
+    };
+    return reasons[reason] || reason || 'Non spécifié';
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
@@ -424,8 +448,8 @@ const TransfersManager = () => {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <p><span className="font-medium">Origine des fonds :</span> {selectedTransfer.funds_origin}</p>
-                    <p><span className="font-medium">Raison du transfert :</span> {selectedTransfer.transfer_reason}</p>
+                    <p><span className="font-medium">Origine des fonds :</span> {getFundsOriginDisplay(selectedTransfer.funds_origin)}</p>
+                    <p><span className="font-medium">Raison du transfert :</span> {getTransferReasonDisplay(selectedTransfer.transfer_reason)}</p>
                   </div>
                 </div>
               </div>

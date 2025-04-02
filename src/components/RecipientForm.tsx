@@ -53,6 +53,7 @@ interface Beneficiary {
   last_name: string;
   email?: string; // Make email optional
   payment_details: any;
+  transfer_id: string;
 }
 
 const FUNDS_ORIGINS = [
@@ -117,30 +118,38 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
 
   const fetchBeneficiaries = async () => {
     try {
-      // Get user's transfers first
-      const { data: transfers, error: transfersError } = await supabase
-        .from('transfers')
-        .select('id')
-        .eq('user_id', user?.id);
+      if (!user?.id) return;
       
-      if (transfersError) throw transfersError;
-      
-      if (!transfers || transfers.length === 0) {
-        // User has no transfers, so no beneficiaries
-        setExistingBeneficiaries([]);
-        return;
-      }
-      
-      // Get beneficiaries for user's transfers
-      const transferIds = transfers.map(t => t.id);
+      // Get all beneficiaries
       const { data, error } = await supabase
         .from('beneficiaries')
-        .select('*')
-        .in('transfer_id', transferIds)
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          payment_details,
+          transfer_id
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setExistingBeneficiaries(data || []);
+      
+      // Filter out duplicates by keeping only the most recent beneficiary with a given name
+      const uniqueBeneficiaries = data?.reduce((acc: Beneficiary[], current) => {
+        const nameKey = `${current.first_name}-${current.last_name}`.toLowerCase();
+        const existingIndex = acc.findIndex(b => 
+          `${b.first_name}-${b.last_name}`.toLowerCase() === nameKey
+        );
+        
+        if (existingIndex === -1) {
+          acc.push(current);
+        }
+        
+        return acc;
+      }, []) || [];
+      
+      setExistingBeneficiaries(uniqueBeneficiaries);
     } catch (err) {
       console.error('Error fetching beneficiaries:', err);
     }
@@ -154,14 +163,14 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
         firstName: beneficiary.first_name,
         lastName: beneficiary.last_name,
         email: beneficiary.email || '',
-        phone: beneficiary.payment_details.phone || '',
-        alipayId: beneficiary.payment_details.alipayId || '',
-        weroName: beneficiary.payment_details.weroName || '',
-        address: beneficiary.payment_details.address || formData.address,
-        bankDetails: beneficiary.payment_details.bankDetails || formData.bankDetails,
-        cardDetails: beneficiary.payment_details.cardDetails || formData.cardDetails,
-        fundsOrigin: beneficiary.payment_details.fundsOrigin || '',
-        transferReason: beneficiary.payment_details.transferReason || ''
+        phone: beneficiary.payment_details?.phone || '',
+        alipayId: beneficiary.payment_details?.alipayId || '',
+        weroName: beneficiary.payment_details?.weroName || '',
+        address: beneficiary.payment_details?.address || formData.address,
+        bankDetails: beneficiary.payment_details?.bankDetails || formData.bankDetails,
+        cardDetails: beneficiary.payment_details?.cardDetails || formData.cardDetails,
+        fundsOrigin: beneficiary.payment_details?.fundsOrigin || '',
+        transferReason: beneficiary.payment_details?.transferReason || ''
       });
       setSelectedBeneficiary(beneficiaryId);
     }
@@ -181,7 +190,7 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
       setFormData(prev => ({
         ...prev,
         [section]: {
-          ...prev[section],
+          ...prev[section as keyof RecipientData],
           [field]: value
         }
       }));
