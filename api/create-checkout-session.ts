@@ -52,6 +52,15 @@ export default async function handler(
     const checkoutUrl = 'https://api.checkout.com/hosted-payments';
     const authToken = process.env.CHECKOUT_SECRET_KEY;
     
+    // Check if the auth token is available
+    if (!authToken) {
+      console.error('CHECKOUT_SECRET_KEY environment variable is not set');
+      return response.status(500).json({
+        error: 'Server Configuration Error',
+        message: 'Payment provider configuration is missing'
+      });
+    }
+    
     const requestData = {
       amount: amountInSmallestUnit,
       currency: currency.toLowerCase(),
