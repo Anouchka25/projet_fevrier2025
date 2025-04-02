@@ -75,6 +75,19 @@ const handler: Handler = async (event) => {
     const checkoutUrl = 'https://api.checkout.com/hosted-payments';
     const authToken = process.env.CHECKOUT_SECRET_KEY || 'sk_sbox_nqr2h5z6ahlurjol64na27pez4r';
     
+    // Check if the auth token is available
+    if (!authToken) {
+      console.error('CHECKOUT_SECRET_KEY environment variable is not set');
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: 'Server Configuration Error',
+          message: 'Payment provider configuration is missing'
+        })
+      };
+    }
+    
     const requestData = {
       amount: amountInSmallestUnit,
       currency: currency.toLowerCase(),
@@ -98,43 +111,88 @@ const handler: Handler = async (event) => {
 
     console.log('Request to Checkout.com:', JSON.stringify(requestData, null, 2));
 
-    const response = await axios({
-      method: 'post',
-      url: checkoutUrl,
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json'
-      },
-      data: requestData,
-      validateStatus: status => true // Don't throw on any status code
-    });
+    try {
+      const response = await axios({
+        method: 'post',
+        url: checkoutUrl,
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: requestData,
+        validateStatus: status => true // Don't throw on any status code
+      });
 
-    console.log('Checkout.com response status:', response.status);
-    console.log('Checkout.com response headers:', JSON.stringify(response.headers, null, 2));
-    console.log('Checkout.com response data:', JSON.stringify(response.data, null, 2));
+      console.log('Checkout.com response status:', response.status);
+      console.log('Checkout.com response headers:', JSON.stringify(response.headers, null, 2));
+      console.log('Checkout.com response data:', JSON.stringify(response.data, null, 2));
 
-    if (response.status >= 400) {
+      if (response.status >= 400) {
+        return {
+          statusCode: response.status,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Payment Provider Error',
+            message: `Erreur du fournisseur de paiement: ${response.status}`,
+            details: response.data
+          }),
+        };
+      }
+
       return {
-        statusCode: response.status,
+        statusCode: 200,
         headers,
         body: JSON.stringify({ 
-          error: 'Payment Provider Error',
-          message: `Erreur du fournisseur de paiement: ${response.status}`,
-          details: response.data
+          sessionId: response.data.id,
+          redirectUrl: response.data.redirect_url
         }),
       };
+    } catch (axiosError: any) {
+      console.error('Axios error:', axiosError.message);
+      
+      // Handle axios errors specifically
+      if (axiosError.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error response data:', axiosError.response.data);
+        console.error('Error response status:', axiosError.response.status);
+        
+        return {
+          statusCode: axiosError.response.status || 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Payment Provider Error',
+            message: `Erreur du fournisseur de paiement: ${axiosError.response.status}`,
+            details: typeof axiosError.response.data === 'string' 
+              ? { message: axiosError.response.data } 
+              : axiosError.response.data
+          })
+        };
+      } else if (axiosError.request) {
+        // The request was made but no response was received
+        console.error('Error request:', axiosError.request);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Network Error',
+            message: 'Aucune réponse reçue du serveur de paiement'
+          })
+        };
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Request Configuration Error',
+            message: axiosError.message
+          })
+        };
+      }
     }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ 
-        sessionId: response.data.id,
-        redirectUrl: response.data.redirect_url
-      }),
-    };
   } catch (err: any) {
-    console.error('Checkout.com error:', err);
+    console.error('General error:', err);
     
     // Ensure we always return a valid JSON response
     let errorDetails = 'Unknown error';

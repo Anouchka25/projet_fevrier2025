@@ -84,34 +84,67 @@ export default async function handler(
 
     console.log('Request to Checkout.com:', JSON.stringify(requestData, null, 2));
 
-    const checkoutResponse = await axios({
-      method: 'post',
-      url: checkoutUrl,
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json'
-      },
-      data: requestData,
-      validateStatus: status => true // Don't throw on any status code
-    });
-
-    console.log('Checkout.com response status:', checkoutResponse.status);
-    console.log('Checkout.com response data:', JSON.stringify(checkoutResponse.data, null, 2));
-
-    if (checkoutResponse.status >= 400) {
-      return response.status(checkoutResponse.status).json({ 
-        error: 'Payment Provider Error',
-        message: `Erreur du fournisseur de paiement: ${checkoutResponse.status}`,
-        details: checkoutResponse.data
+    try {
+      const checkoutResponse = await axios({
+        method: 'post',
+        url: checkoutUrl,
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: requestData,
+        validateStatus: status => true // Don't throw on any status code
       });
-    }
 
-    return response.status(200).json({ 
-      sessionId: checkoutResponse.data.id,
-      redirectUrl: checkoutResponse.data.redirect_url
-    });
+      console.log('Checkout.com response status:', checkoutResponse.status);
+      console.log('Checkout.com response data:', JSON.stringify(checkoutResponse.data, null, 2));
+
+      if (checkoutResponse.status >= 400) {
+        return response.status(checkoutResponse.status).json({ 
+          error: 'Payment Provider Error',
+          message: `Erreur du fournisseur de paiement: ${checkoutResponse.status}`,
+          details: checkoutResponse.data
+        });
+      }
+
+      return response.status(200).json({ 
+        sessionId: checkoutResponse.data.id,
+        redirectUrl: checkoutResponse.data.redirect_url
+      });
+    } catch (axiosError: any) {
+      console.error('Axios error:', axiosError.message);
+      
+      // Handle axios errors specifically
+      if (axiosError.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error response data:', axiosError.response.data);
+        console.error('Error response status:', axiosError.response.status);
+        
+        return response.status(axiosError.response.status || 500).json({ 
+          error: 'Payment Provider Error',
+          message: `Erreur du fournisseur de paiement: ${axiosError.response.status}`,
+          details: typeof axiosError.response.data === 'string' 
+            ? { message: axiosError.response.data } 
+            : axiosError.response.data
+        });
+      } else if (axiosError.request) {
+        // The request was made but no response was received
+        console.error('Error request:', axiosError.request);
+        return response.status(500).json({ 
+          error: 'Network Error',
+          message: 'Aucune réponse reçue du serveur de paiement'
+        });
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        return response.status(500).json({ 
+          error: 'Request Configuration Error',
+          message: axiosError.message
+        });
+      }
+    }
   } catch (err: any) {
-    console.error('Checkout.com error:', err);
+    console.error('General error:', err);
     
     // Ensure we always return a valid JSON response
     let errorDetails = 'Unknown error';
