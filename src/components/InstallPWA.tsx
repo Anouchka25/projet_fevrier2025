@@ -11,33 +11,64 @@ const InstallPWA = () => {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setShowPrompt(true);
+    const isAppInstalled = () => {
+      return window.matchMedia('(display-mode: standalone)').matches ||
+             window.navigator.standalone === true;
     };
 
-    window.addEventListener('beforeinstallprompt', handler);
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
 
-    // Vérifier si déjà installé
-    if (window.matchMedia('(display-mode: standalone)').matches) {
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (e.clientY <= 10 && !isAppInstalled()) {
+        setShowPrompt(true);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && !isAppInstalled()) {
+        setShowPrompt(true);
+      }
+    };
+
+    const handlePageHide = () => {
+      if (!isAppInstalled()) {
+        setShowPrompt(true);
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    document.addEventListener('mouseleave', handleMouseLeave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+
+    window.addEventListener('appinstalled', () => {
       setShowPrompt(false);
-    }
+      setDeferredPrompt(null);
+      console.log('Application installée avec succès');
+    });
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
   }, []);
 
   const handleInstall = async () => {
     if (!deferredPrompt) return;
 
     try {
-      // Déclencher le prompt d'installation
       await deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      
+
       if (outcome === 'accepted') {
         console.log('Application installée avec succès');
       }
+
       setDeferredPrompt(null);
       setShowPrompt(false);
     } catch (error) {
@@ -48,19 +79,20 @@ const InstallPWA = () => {
   if (!showPrompt) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 m-4">
         <button
           onClick={() => setShowPrompt(false)}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-500"
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 rounded-full p-1"
+          aria-label="Fermer"
         >
           <X className="h-5 w-5" />
         </button>
 
         <div className="text-center">
-          <img src="/KundaPay2.svg" alt="KundaPay Logo" className="h-16 mx-auto mb-4" />
+          <img src="/KundaPay.svg" alt="KundaPay Logo" className="h-32 mx-auto mb-4" />
           
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
             Installez KundaPay sur votre appareil
           </h3>
           
@@ -71,14 +103,14 @@ const InstallPWA = () => {
           <div className="space-y-3">
             <button
               onClick={handleInstall}
-              className="w-full bg-yellow-600 text-white rounded-md py-2 px-4 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2"
+              className="w-full bg-yellow-600 text-white rounded-lg py-3 px-4 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
             >
               Installer maintenant
             </button>
             
             <button
               onClick={() => setShowPrompt(false)}
-              className="w-full text-gray-600 hover:text-gray-800"
+              className="w-full text-gray-600 hover:text-gray-800 transition-colors duration-200"
             >
               Plus tard
             </button>

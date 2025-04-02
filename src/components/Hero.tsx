@@ -9,10 +9,10 @@ const Hero = () => {
             <div className="sm:text-center lg:text-left">
               <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
                 <span className="block">KundaPay :</span>
-                <span className="block text-yellow-500">Le transfert en toute confiance</span>
+                <span className="block text-yellow-500">Le transfert en toute confiance </span>
               </h1>
               <p className="mt-3 text-base text-gray-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
-                Grâce à notre service innovant, transférez de l'argent instantanément entre le Gabon, la Chine, la France, le Canada et les USA . Profitez de frais compétitifs et d'une expérience utilisateur optimisée pour vos besoins personnels ou professionnels.
+                Transférez de l'argent facilement entre le Gabon, la Chine, USA, Canada, Belgique, Allemagne et la France avec KundaPay. Profitez de frais compétitifs et d'une expérience utilisateur optimisée.
               </p>
             </div>
           </main>

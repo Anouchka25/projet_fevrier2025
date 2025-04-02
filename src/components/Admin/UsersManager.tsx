@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Eye, UserCheck, UserX } from 'lucide-react';
 
@@ -8,14 +9,34 @@ interface User {
   first_name: string;
   last_name: string;
   country: string;
+  phone: string;
   created_at: string;
   is_admin: boolean;
+  profile_photo_url?: string;
+  address?: {
+    street: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
+}
+
+interface UserDocument {
+  id: string;
+  user_id: string;
+  document_type: string;
+  document_url: string;
+  side: string;
+  verified: boolean;
+  created_at: string;
 }
 
 const UsersManager = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [userDocuments, setUserDocuments] = useState<UserDocument[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -37,6 +58,21 @@ const UsersManager = () => {
     }
   };
 
+  const fetchUserDocuments = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_documents')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUserDocuments(data || []);
+    } catch (err) {
+      console.error('Error fetching user documents:', err);
+    }
+  };
+
   const handleToggleAdmin = async (userId: string, isAdmin: boolean) => {
     try {
       const { error } = await supabase
@@ -49,6 +85,27 @@ const UsersManager = () => {
     } catch (err) {
       console.error('Error updating user:', err);
     }
+  };
+
+  const handleVerifyDocument = async (docId: string, verified: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('user_documents')
+        .update({ verified: !verified })
+        .eq('id', docId);
+
+      if (error) throw error;
+      if (selectedUser) {
+        await fetchUserDocuments(selectedUser.id);
+      }
+    } catch (err) {
+      console.error('Error updating document:', err);
+    }
+  };
+
+  const handleUserSelect = async (user: User) => {
+    setSelectedUser(user);
+    await fetchUserDocuments(user.id);
   };
 
   if (loading) {
@@ -71,6 +128,9 @@ const UsersManager = () => {
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Email
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Téléphone
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Pays
@@ -96,8 +156,13 @@ const UsersManager = () => {
                   {user.email}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {user.phone || '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {user.country === 'GA' ? 'Gabon' :
                    user.country === 'FR' ? 'France' :
+                   user.country === 'BE' ? 'Belgique' :
+                   user.country === 'DE' ? 'Allemagne' :
                    user.country === 'CN' ? 'Chine' :
                    user.country === 'US' ? 'États-Unis' :
                    user.country === 'CA' ? 'Canada' :
@@ -125,7 +190,7 @@ const UsersManager = () => {
                       {user.is_admin ? <UserX className="h-5 w-5" /> : <UserCheck className="h-5 w-5" />}
                     </button>
                     <button
-                      onClick={() => setSelectedUser(user)}
+                      onClick={() => handleUserSelect(user)}
                       className="text-yellow-600 hover:text-yellow-900"
                       title="Voir les détails"
                     >
@@ -163,21 +228,68 @@ const UsersManager = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <h4 className="text-sm font-medium text-gray-500">Téléphone</h4>
+                  <p className="mt-1">{selectedUser.phone || '-'}</p>
+                </div>
+                <div>
                   <h4 className="text-sm font-medium text-gray-500">Pays</h4>
                   <p className="mt-1">
                     {selectedUser.country === 'GA' ? 'Gabon' :
                      selectedUser.country === 'FR' ? 'France' :
+                     selectedUser.country === 'BE' ? 'Belgique' :
+                     selectedUser.country === 'DE' ? 'Allemagne' :
                      selectedUser.country === 'CN' ? 'Chine' :
                      selectedUser.country === 'US' ? 'États-Unis' :
                      selectedUser.country === 'CA' ? 'Canada' :
                      selectedUser.country}
                   </p>
                 </div>
+              </div>
+
+              {selectedUser.address && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-500">Date d'inscription</h4>
+                  <h4 className="text-sm font-medium text-gray-500">Adresse</h4>
+                  <p className="mt-1">{selectedUser.address.street}</p>
                   <p className="mt-1">
-                    {new Date(selectedUser.created_at).toLocaleDateString('fr-FR')}
+                    {selectedUser.address.city}, {selectedUser.address.zipCode}
                   </p>
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-500">Documents</h4>
+                <div className="mt-2 space-y-4">
+                  {userDocuments.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {doc.document_type === 'id_card' ? 'Carte d\'identité' : 'Justificatif de domicile'}
+                          {doc.document_type === 'id_card' && ` (${doc.side})`}
+                        </p>
+                        <a
+                          href={doc.document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-yellow-600 hover:text-yellow-500"
+                        >
+                          Voir le document
+                        </a>
+                      </div>
+                      <button
+                        onClick={() => handleVerifyDocument(doc.id, doc.verified)}
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          doc.verified
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                            : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                        }`}
+                      >
+                        {doc.verified ? 'Vérifié' : 'Valider'}
+                      </button>
+                    </div>
+                  ))}
+                  {userDocuments.length === 0 && (
+                    <p className="text-sm text-gray-500">Aucun document téléchargé</p>
+                  )}
                 </div>
               </div>
 

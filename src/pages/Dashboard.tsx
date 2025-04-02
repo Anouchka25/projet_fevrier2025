@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/Auth/AuthProvider';
 import { supabase } from '../lib/supabase';
-import { formatCurrency } from '../lib/utils';
-import { ArrowRight } from 'lucide-react';
+import Navbar from '../components/Navbar';
 import type { Database } from '../lib/database.types';
 
 type Transfer = Database['public']['Tables']['transfers']['Row'];
@@ -79,16 +78,20 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500" />
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500" />
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-7xl mx-auto">
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto p-4">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-red-700">{error}</p>
             <button
@@ -105,8 +108,9 @@ const Dashboard = () => {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-7xl mx-auto">
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto p-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
             <p className="text-yellow-700">Profil non trouvé. Veuillez vous reconnecter.</p>
             <button
@@ -122,8 +126,9 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Bouton pour faire un nouveau transfert */}
         <div className="mb-8">
           <button
@@ -131,7 +136,9 @@ const Dashboard = () => {
             className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
           >
             Faire un nouveau transfert
-            <ArrowRight className="ml-2 h-5 w-5" />
+            <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
           </button>
         </div>
 
@@ -219,10 +226,10 @@ const Dashboard = () => {
                         })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(transfer.amount_sent, transfer.sender_currency)}
+                        {transfer.amount_sent.toLocaleString('fr-FR')} {transfer.sender_currency}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(transfer.amount_received, transfer.receiver_currency)}
+                        {transfer.amount_received.toLocaleString('fr-FR')} {transfer.receiver_currency}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {transfer.beneficiaries && transfer.beneficiaries[0] ? (

@@ -1,6 +1,6 @@
 import React from 'react';
-import { CircleDollarSign } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CircleDollarSign } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -23,8 +23,18 @@ const Footer = () => {
             </h3>
             <ul className="mt-4 space-y-4">
               <li>
+                <Link to="/mentions-legales" className="text-base text-gray-300 hover:text-white">
+                  Mentions légales
+                </Link>
+              </li>
+              <li>
                 <Link to="/conditions-generales" className="text-base text-gray-300 hover:text-white">
                   Conditions générales
+                </Link>
+              </li>
+              <li>
+                <Link to="/Procedures" className="text-base text-gray-300 hover:text-white">
+                  Procédure de Vérification des Fonds Entrants
                 </Link>
               </li>
               <li>
@@ -32,36 +42,30 @@ const Footer = () => {
                   Politique de confidentialité
                 </Link>
               </li>
-              <li>
-                <Link to="/mentions-legales" className="text-base text-gray-300 hover:text-white">
-                  Mentions légales
-                </Link>
-              </li>
             </ul>
           </div>
           
           <div>
             <h3 className="text-sm font-semibold text-gray-400 tracking-wider uppercase">
-              Réseaux sociaux
+              Contact
             </h3>
             <ul className="mt-4 space-y-4">
               <li>
-                <a href="https://www.facebook.com/kundapay" target="_blank" rel="noopener noreferrer" className="text-base text-gray-300 hover:text-white">
-                  Facebook
+                <a href="mailto:kundapay@gmail.com" className="text-base text-gray-300 hover:text-white">
+                  kundapay@gmail.com
+                </a>
+              </li>
+              <li>
+                <a href="tel:+33658898531" className="text-base text-gray-300 hover:text-white">
+                  +33 6 58 89 85 31
                 </a>
               </li>
             </ul>
           </div>
         </div>
-        
-        <div className="mt-8 border-t border-gray-700 pt-8">
-          <p className="text-base text-gray-400 text-center">
-            © {new Date().getFullYear()} KundaPay. Tous droits réservés. Créé par <a href="https://agency.toutpaie.fr/" target="_blank">ToutPaie Agency</a>
-          </p>
-        </div>
       </div>
     </footer>
   );
-}
+};
 
 export default Footer;

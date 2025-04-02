@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './Auth/AuthProvider';
 import type { TransferDirection, ReceivingMethod } from '../lib/constants';
 
 interface RecipientFormProps {
@@ -19,7 +21,7 @@ interface RecipientFormProps {
 export interface RecipientData {
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string; // Make email optional
   phone: string;
   alipayId?: string;
   weroName?: string;
@@ -41,9 +43,38 @@ export interface RecipientData {
     expiryDate: string;
     cardholderName: string;
   };
+  fundsOrigin: string;
+  transferReason: string;
 }
 
+interface Beneficiary {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email?: string; // Make email optional
+  payment_details: any;
+}
+
+const FUNDS_ORIGINS = [
+  { value: 'salary', label: 'Salaire' },
+  { value: 'savings', label: 'Épargne' },
+  { value: 'business', label: 'Revenus d\'entreprise' },
+  { value: 'investment', label: 'Investissements' },
+  { value: 'gift', label: 'Don' },
+  { value: 'other', label: 'Autre' }
+];
+
+const TRANSFER_REASONS = [
+  { value: 'family_support', label: 'Soutien familial' },
+  { value: 'business', label: 'Affaires' },
+  { value: 'education', label: 'Éducation' },
+  { value: 'medical', label: 'Frais médicaux' },
+  { value: 'travel', label: 'Voyage' },
+  { value: 'other', label: 'Autre' }
+];
+
 const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, onSubmit }) => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<RecipientData>({
     firstName: '',
     lastName: '',
@@ -69,29 +100,105 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
       cardNumber: '',
       expiryDate: '',
       cardholderName: ''
-    }
+    },
+    fundsOrigin: '',
+    transferReason: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [existingBeneficiaries, setExistingBeneficiaries] = useState<Beneficiary[]>([]);
+  const [selectedBeneficiary, setSelectedBeneficiary] = useState<string>('');
 
-  const needsAddress = () => {
-    return ['ACH', 'BANK_TRANSFER', 'MASTERCARD_SEND', 'VISA_DIRECT'].includes(transferDetails.receivingMethod);
+  useEffect(() => {
+    if (user) {
+      fetchBeneficiaries();
+    }
+  }, [user]);
+
+  const fetchBeneficiaries = async () => {
+    try {
+      // Get user's transfers first
+      const { data: transfers, error: transfersError } = await supabase
+        .from('transfers')
+        .select('id')
+        .eq('user_id', user?.id);
+      
+      if (transfersError) throw transfersError;
+      
+      if (!transfers || transfers.length === 0) {
+        // User has no transfers, so no beneficiaries
+        setExistingBeneficiaries([]);
+        return;
+      }
+      
+      // Get beneficiaries for user's transfers
+      const transferIds = transfers.map(t => t.id);
+      const { data, error } = await supabase
+        .from('beneficiaries')
+        .select('*')
+        .in('transfer_id', transferIds)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setExistingBeneficiaries(data || []);
+    } catch (err) {
+      console.error('Error fetching beneficiaries:', err);
+    }
   };
 
-  const needsBankDetails = () => {
-    return ['ACH', 'BANK_TRANSFER'].includes(transferDetails.receivingMethod);
+  const handleBeneficiarySelect = (beneficiaryId: string) => {
+    const beneficiary = existingBeneficiaries.find(b => b.id === beneficiaryId);
+    if (beneficiary) {
+      setFormData({
+        ...formData,
+        firstName: beneficiary.first_name,
+        lastName: beneficiary.last_name,
+        email: beneficiary.email || '',
+        phone: beneficiary.payment_details.phone || '',
+        alipayId: beneficiary.payment_details.alipayId || '',
+        weroName: beneficiary.payment_details.weroName || '',
+        address: beneficiary.payment_details.address || formData.address,
+        bankDetails: beneficiary.payment_details.bankDetails || formData.bankDetails,
+        cardDetails: beneficiary.payment_details.cardDetails || formData.cardDetails,
+        fundsOrigin: beneficiary.payment_details.fundsOrigin || '',
+        transferReason: beneficiary.payment_details.transferReason || ''
+      });
+      setSelectedBeneficiary(beneficiaryId);
+    }
   };
 
-  const needsCardDetails = () => {
-    return ['VISA_DIRECT', 'MASTERCARD_SEND'].includes(transferDetails.receivingMethod);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validateForm()) {
+      onSubmit(formData);
+    }
   };
 
-  const needsAlipayId = () => {
-    return transferDetails.receivingMethod === 'ALIPAY';
-  };
-
-  const needsWeroDetails = () => {
-    return transferDetails.receivingMethod === 'WERO';
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    if (name.includes('.')) {
+      const [section, field] = name.split('.');
+      setFormData(prev => ({
+        ...prev,
+        [section]: {
+          ...prev[section],
+          [field]: value
+        }
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+    
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
   };
 
   const validateForm = () => {
@@ -104,10 +211,18 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
     if (!formData.lastName.trim()) {
       newErrors.lastName = 'Le nom est requis';
     }
-    if (!formData.email.trim()) {
-      newErrors.email = 'L\'email est requis';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+
+    // Email validation is now optional
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Email invalide';
+    }
+
+    // Validate funds origin and transfer reason
+    if (!formData.fundsOrigin) {
+      newErrors.fundsOrigin = 'L\'origine des fonds est requise';
+    }
+    if (!formData.transferReason) {
+      newErrors.transferReason = 'La raison du transfert est requise';
     }
 
     // Phone validation for Airtel Money
@@ -115,10 +230,21 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
       if (!formData.phone.trim()) {
         newErrors.phone = 'Le numéro de téléphone est requis';
       } else {
-        // Format Airtel Money: 074XXXXXX (9 chiffres au total)
-        const phoneRegex = /^0(74|77)[0-9]{6}$/;
+        const phoneRegex = /^0\d{5,8}$/;
         if (!phoneRegex.test(formData.phone)) {
-          newErrors.phone = 'Format invalide. Exemple: 074123456';
+          newErrors.phone = 'Format invalide. Exemple: 0741234567';
+        }
+      }
+    }
+
+    // Phone validation for Moov Money
+    if (transferDetails.receivingMethod === 'MOOV_MONEY') {
+      if (!formData.phone.trim()) {
+        newErrors.phone = 'Le numéro de téléphone est requis';
+      } else {
+        const phoneRegex = /^0\d{5,8}$/;
+        if (!phoneRegex.test(formData.phone)) {
+          newErrors.phone = 'Format invalide. Exemple: 0621234567';
         }
       }
     }
@@ -136,7 +262,7 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
     }
 
     // Validation for Alipay ID
-    if (needsAlipayId()) {
+    if (transferDetails.receivingMethod === 'ALIPAY') {
       if (!formData.alipayId?.trim()) {
         newErrors.alipayId = 'L\'identifiant Alipay est requis';
       }
@@ -188,58 +314,24 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    if (name.includes('.')) {
-      const [section, field] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [section]: {
-          ...prev[section],
-          [field]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
-    
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
-    }
+  const needsAddress = () => {
+    return ['ACH', 'BANK_TRANSFER', 'MASTERCARD_SEND', 'VISA_DIRECT'].includes(transferDetails.receivingMethod);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validateForm()) {
-      onSubmit(formData);
-    }
+  const needsBankDetails = () => {
+    return ['ACH', 'BANK_TRANSFER'].includes(transferDetails.receivingMethod);
   };
 
-  const getPhoneLabel = () => {
-    if (transferDetails.receivingMethod === 'AIRTEL_MONEY') {
-      return 'Numéro Airtel Money';
-    }
-    if (transferDetails.receivingMethod === 'WERO') {
-      return 'Numéro Wero';
-    }
-    return 'Téléphone';
+  const needsCardDetails = () => {
+    return ['VISA_DIRECT', 'MASTERCARD_SEND'].includes(transferDetails.receivingMethod);
   };
 
-  const getPhonePlaceholder = () => {
-    if (transferDetails.receivingMethod === 'AIRTEL_MONEY') {
-      return '074123456';
-    }
-    if (transferDetails.receivingMethod === 'WERO') {
-      return '+33612345678';
-    }
-    return '';
+  const needsAlipayId = () => {
+    return transferDetails.receivingMethod === 'ALIPAY';
+  };
+
+  const needsWeroDetails = () => {
+    return transferDetails.receivingMethod === 'WERO';
   };
 
   return (
@@ -284,6 +376,28 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Existing Beneficiaries Section */}
+              {existingBeneficiaries.length > 0 && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sélectionner un bénéficiaire existant
+                  </label>
+                  <select
+                    value={selectedBeneficiary}
+                    onChange={(e) => handleBeneficiarySelect(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                  >
+                    <option value="">Nouveau bénéficiaire</option>
+                    {existingBeneficiaries.map((beneficiary) => (
+                      <option key={beneficiary.id} value={beneficiary.id}>
+                        {beneficiary.first_name} {beneficiary.last_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Basic Information */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -324,10 +438,11 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
                 </div>
               </div>
 
+              {/* Contact Information */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Email
+                    Email (optionnel)
                   </label>
                   <input
                     type="email"
@@ -337,7 +452,6 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
                     className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
                       errors.email ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    required
                   />
                   {errors.email && (
                     <p className="mt-2 text-sm text-red-600">{errors.email}</p>
@@ -346,14 +460,13 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    {getPhoneLabel()}
+                    Téléphone
                   </label>
                   <input
                     type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
-                    placeholder={getPhonePlaceholder()}
                     className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
                       errors.phone ? 'border-red-300' : 'border-gray-300'
                     }`}
@@ -364,6 +477,60 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
                 </div>
               </div>
 
+              {/* Funds Origin and Transfer Reason */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Origine des fonds
+                  </label>
+                  <select
+                    name="fundsOrigin"
+                    value={formData.fundsOrigin}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
+                      errors.fundsOrigin ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    required
+                  >
+                    <option value="">Sélectionnez l'origine des fonds</option>
+                    {FUNDS_ORIGINS.map(origin => (
+                      <option key={origin.value} value={origin.value}>
+                        {origin.label}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.fundsOrigin && (
+                    <p className="mt-2 text-sm text-red-600">{errors.fundsOrigin}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Raison du transfert
+                  </label>
+                  <select
+                    name="transferReason"
+                    value={formData.transferReason}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
+                      errors.transferReason ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    required
+                  >
+                    <option value="">Sélectionnez la raison du transfert</option>
+                    {TRANSFER_REASONS.map(reason => (
+                      <option key={reason.value} value={reason.value}>
+                        {reason.label}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.transferReason && (
+                    <p className="mt-2 text-sm text-red-600">{errors.transferReason}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Method-specific fields */}
               {needsAlipayId() && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -560,7 +727,8 @@ const RecipientForm: React.FC<RecipientFormProps> = ({ transferDetails, onBack, 
                           }`}
                         />
                         {errors['bankDetails.swiftCode'] && (
-                          <p className="mt-2 text-sm text-red-600">{errors['bankDetails.swiftCode']}</p>
+                          <p className="mt-2 text-sm text-red-600">{errors['bankDetails.swiftCode']}
+                          </p>
                         )}
                       </div>
                     )}

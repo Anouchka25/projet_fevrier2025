@@ -1,16 +1,11 @@
 import { Handler } from '@netlify/functions';
-import Stripe from 'stripe';
-
-// Initialize Stripe with secret key from environment variable
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2023-10-16'
-});
+import axios from 'axios';
 
 const handler: Handler = async (event) => {
   // Set CORS headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json'
   };
@@ -43,98 +38,135 @@ const handler: Handler = async (event) => {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: 'Missing request body',
+          error: 'Bad Request',
           message: 'Request body is required'
         })
       };
     }
 
-    const { 
-      amount,
-      currency,
-      direction,
-      paymentMethod,
-      recipientId,
-      transferReference
-    } = JSON.parse(event.body);
+    const { amount, currency, reference } = JSON.parse(event.body);
 
     // Validate required fields
-    if (!amount || !currency || !direction || !paymentMethod || !recipientId || !transferReference) {
+    if (!amount || !currency) {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: 'Missing required fields',
-          message: 'All fields are required'
+          error: 'Bad Request',
+          message: 'Amount and currency are required'
         })
       };
     }
 
-    // Convert amount to cents
-    const amountInCents = Math.round(amount * 100);
+    // Convert amount to cents/smallest currency unit
+    const amountInSmallestUnit = Math.round(amount * 100);
+    
+    // Generate a unique reference if not provided
+    const paymentReference = reference || `KP-${Date.now()}`;
 
-    // Create Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: getPaymentMethodTypes(paymentMethod),
-      line_items: [{
-        price_data: {
-          currency: currency.toLowerCase(),
-          product_data: {
-            name: 'Transfert KundaPay',
-            description: `Référence: ${transferReference}`,
-          },
-          unit_amount: amountInCents,
-        },
-        quantity: 1,
-      }],
-      mode: 'payment',
-      success_url: `${process.env.URL || 'http://localhost:5173'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.URL || 'http://localhost:5173'}/transfer`,
-      metadata: {
-        direction,
-        transferReference,
-        recipientId
-      },
-      locale: 'fr'
+    console.log('Creating checkout session with:', {
+      amount: amountInSmallestUnit,
+      currency: currency.toLowerCase(),
+      reference: paymentReference
     });
 
-    if (!session?.url) {
-      throw new Error('Failed to create checkout session');
+    // Create checkout session with Checkout.com
+    // Using the correct API endpoint for Checkout.com hosted payments
+    const checkoutUrl = 'https://api.checkout.com/hosted-payments';
+    const authToken = process.env.CHECKOUT_SECRET_KEY || 'sk_sbox_nqr2h5z6ahlurjol64na27pez4r';
+    
+    const requestData = {
+      amount: amountInSmallestUnit,
+      currency: currency.toLowerCase(),
+      billing: {
+        address: {
+          country: 'FR'
+        }
+      },
+      success_url: `${process.env.URL || 'https://kundapay.com'}/transfer?status=success`,
+      failure_url: `${process.env.URL || 'https://kundapay.com'}/transfer?status=failure`,
+      cancel_url: `${process.env.URL || 'https://kundapay.com'}/transfer?status=cancelled`,
+      reference: paymentReference,
+      // Add these fields to improve the payment experience
+      capture: true,
+      payment_type: "Regular",
+      "3ds": {
+        enabled: true
+      },
+      locale: "fr-FR"
+    };
+
+    console.log('Request to Checkout.com:', JSON.stringify(requestData, null, 2));
+
+    const response = await axios({
+      method: 'post',
+      url: checkoutUrl,
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      },
+      data: requestData,
+      validateStatus: status => true // Don't throw on any status code
+    });
+
+    console.log('Checkout.com response status:', response.status);
+    console.log('Checkout.com response headers:', JSON.stringify(response.headers, null, 2));
+    console.log('Checkout.com response data:', JSON.stringify(response.data, null, 2));
+
+    if (response.status >= 400) {
+      return {
+        statusCode: response.status,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Payment Provider Error',
+          message: `Erreur du fournisseur de paiement: ${response.status}`,
+          details: response.data
+        }),
+      };
     }
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({
-        sessionUrl: session.url,
-        sessionId: session.id
-      })
+      body: JSON.stringify({ 
+        sessionId: response.data.id,
+        redirectUrl: response.data.redirect_url
+      }),
     };
-  } catch (error) {
-    console.error('Stripe error:', error);
-
+  } catch (err: any) {
+    console.error('Checkout.com error:', err);
+    
+    // Ensure we always return a valid JSON response
+    let errorDetails = 'Unknown error';
+    let statusCode = 500;
+    
+    if (err.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error('Error response data:', err.response.data);
+      console.error('Error response status:', err.response.status);
+      statusCode = err.response.status;
+      errorDetails = JSON.stringify(err.response.data) || err.message;
+    } else if (err.request) {
+      // The request was made but no response was received
+      console.error('Error request:', err.request);
+      errorDetails = 'No response received from payment server';
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error('Error message:', err.message);
+      errorDetails = err.message;
+    }
+    
     return {
-      statusCode: 500,
+      statusCode,
       headers,
-      body: JSON.stringify({
-        error: 'Payment initialization failed',
-        message: error instanceof Error ? error.message : 'An unexpected error occurred'
-      })
+      body: JSON.stringify({ 
+        error: 'Payment Error',
+        message: `Erreur lors de la création de session: ${err.message}`,
+        details: errorDetails
+      }),
     };
   }
 };
-
-function getPaymentMethodTypes(paymentMethod: string): Stripe.Checkout.SessionCreateParams.PaymentMethodType[] {
-  switch (paymentMethod) {
-    case 'CARD':
-      return ['card'];
-    case 'ACH':
-      return ['us_bank_account'];
-    case 'PAYPAL':
-      return ['paypal'];
-    default:
-      return ['card'];
-  }
-}
 
 export { handler };

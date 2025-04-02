@@ -6,6 +6,8 @@
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#d97706",
+  "orientation": "portrait",
+  "gcm_sender_id": "482941778795",
   "icons": [
     {
       "src": "/favicon.png",
@@ -55,5 +57,25 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "Faire un transfert",
+      "short_name": "Transfert",
+      "description": "Commencer un nouveau transfert",
+      "url": "/transfer",
+      "icons": [{ "src": "/KundaPay.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mon profil",
+      "short_name": "Profil",
+      "description": "Voir mon profil",
+      "url": "/profile",
+      "icons": [{ "src": "/KundaPay.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "categories": ["finance", "business"],
+  "screenshots": []
 }

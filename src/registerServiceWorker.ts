@@ -39,3 +39,16 @@ export function isPWAInstalled() {
   return window.matchMedia('(display-mode: standalone)').matches ||
          window.navigator.standalone === true;
 }
+
+// Fonction pour vérifier si l'application peut être installée
+export function canInstallPWA() {
+  return 'BeforeInstallPromptEvent' in window;
+}
+
+// Fonction pour ajouter l'icône sur l'écran d'accueil
+export async function addToHomeScreen() {
+  if ('standalone' in navigator) {
+    // @ts-ignore
+    navigator.standalone = true;
+  }
+}

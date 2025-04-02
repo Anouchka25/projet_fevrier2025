@@ -42,7 +42,8 @@ const methodNames: { [key: string]: string } = {
   APPLE_PAY: "Apple Pay",
   PAYPAL: "PayPal",
   VISA_DIRECT: "Visa Direct",
-  MASTERCARD_SEND: "Mastercard Send"
+  MASTERCARD_SEND: "Mastercard Send",
+  WERO: "Wero"
 };
 
 const Fees = () => {
@@ -68,22 +69,25 @@ const Fees = () => {
           throw new Error('Données non disponibles');
         }
 
-        // Filtrer les taux de change pertinents
-        const relevantRates = rates.filter(rate => {
-          const validPairs = [
-            { from: 'EUR', to: 'XAF' },
-            { from: 'EUR', to: 'CNY' },
-            { from: 'XAF', to: 'CNY' },
-            { from: 'USD', to: 'XAF' },
-            { from: 'CAD', to: 'XAF' }
-          ];
-          return validPairs.some(pair => 
-            rate.from_currency === pair.from && 
-            rate.to_currency === pair.to
-          );
-        });
+        // Filtrer et trier les taux de change
+        const filteredRates = rates
+          .filter(rate => {
+            // Exclure les taux EUR/XAF et XAF/EUR car ils sont fixes
+            if ((rate.from_currency === 'EUR' && rate.to_currency === 'XAF') ||
+                (rate.from_currency === 'XAF' && rate.to_currency === 'EUR')) {
+              return false;
+            }
+            return true;
+          })
+          .sort((a, b) => {
+            // Trier par devise source puis devise cible
+            if (a.from_currency !== b.from_currency) {
+              return a.from_currency.localeCompare(b.from_currency);
+            }
+            return a.to_currency.localeCompare(b.to_currency);
+          });
 
-        setExchangeRates(relevantRates);
+        setExchangeRates(filteredRates);
         setTransferFees(fees);
       } catch (err) {
         console.error('Erreur lors du chargement des données:', err);
@@ -95,6 +99,16 @@ const Fees = () => {
 
     fetchData();
   }, []);
+
+  const formatRate = (rate: number): string => {
+    if (rate < 0.01) {
+      return rate.toFixed(6);
+    } else if (rate < 1) {
+      return rate.toFixed(4);
+    } else {
+      return rate.toFixed(2);
+    }
+  };
 
   if (loading) {
     return (
@@ -127,7 +141,7 @@ const Fees = () => {
   return (
     <section id="fees" className="py-16 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">
           Frais et moyens de paiement
         </h2>
         
@@ -137,11 +151,20 @@ const Fees = () => {
             Taux de change
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Taux fixe EUR/XAF */}
+            <div className="bg-yellow-50 rounded-lg p-6 shadow-sm">
+              <div className="text-lg text-center">
+                <span className="font-medium">
+                  1 EUR = 655,96 XAF
+                </span>
+              </div>
+            </div>
+            {/* Autres taux de change */}
             {exchangeRates.map((rate, index) => (
               <div key={index} className="bg-gray-50 rounded-lg p-6 shadow-sm">
                 <div className="text-lg text-center">
                   <span className="font-medium">
-                    1 {rate.from_currency} = {rate.rate.toFixed(4)} {rate.to_currency}
+                    1 {rate.from_currency} = {formatRate(rate.rate)} {rate.to_currency}
                   </span>
                 </div>
               </div>

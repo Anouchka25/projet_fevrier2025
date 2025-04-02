@@ -3,8 +3,10 @@ const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/favicon.png',
+  '/KundaPay.png',
+  '/KundaPay.svg',
+  '/KundaPay2.svg'
 ];
 
 // Installation du Service Worker
@@ -13,6 +15,8 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(urlsToCache))
   );
+  // Force l'activation immédiate
+  self.skipWaiting();
 });
 
 // Activation du Service Worker
@@ -25,7 +29,18 @@ self.addEventListener('activate', (event) => {
             return caches.delete(cacheName);
           }
         })
-      );
+      ).then(() => {
+        // Prendre le contrôle immédiatement
+        clients.claim();
+        // Notifier tous les clients qu'une mise à jour est disponible
+        self.clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'UPDATE_AVAILABLE'
+            });
+          });
+        });
+      });
     })
   );
 });
@@ -36,8 +51,8 @@ self.addEventListener('push', (event) => {
     const data = event.data.json();
     const options = {
       body: data.body || 'Nouveau transfert reçu',
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/icon-72x72.png',
+      icon: '/KundaPay.png',
+      badge: '/favicon.png',
       vibrate: [100, 50, 100],
       data: {
         transferId: data.transferId,
@@ -49,8 +64,8 @@ self.addEventListener('push', (event) => {
           title: 'Voir le transfert'
         }
       ],
-      tag: 'transfer-notification', // Pour regrouper les notifications
-      renotify: true // Pour vibrer même si une notification existe déjà
+      tag: 'transfer-notification',
+      renotify: true
     };
 
     event.waitUntil(
@@ -72,7 +87,37 @@ self.addEventListener('notificationclick', (event) => {
   }
 });
 
-// Gestion des erreurs de notification
-self.addEventListener('error', (event) => {
-  console.error('Service Worker error:', event.error);
+// Gestion du fetch pour le mode hors ligne
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // Cache hit - return response
+        if (response) {
+          return response;
+        }
+
+        // Clone the request because it's a stream
+        const fetchRequest = event.request.clone();
+
+        return fetch(fetchRequest).then(
+          (response) => {
+            // Check if we received a valid response
+            if(!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+
+            // Clone the response because it's a stream
+            const responseToCache = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+
+            return response;
+          }
+        );
+      })
+  );
 });

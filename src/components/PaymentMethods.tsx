@@ -3,20 +3,25 @@ import React from 'react';
 const paymentMethods = [
   {
     name: "Airtel Money",
-    logo: "/1000133609.6795ec426ab7e3.44408427.png"
+    logo: "/airtel-money.png"
   },
   {
-    name: "Wero ou Virement Bancaire",
-    logo: "/images.67962a90368955.30206419.jpg"
+    name: "Moov Money",
+    logo: "/moov-money.png"
+  },
+  
+  {
+    name: "Virement Bancaire",
+    logo: "/virement-bancaire.jpg"
   },
   {
-    name: "Wero ou Virement Bancaire",
-    logo: "/6758417ac70b0020047139.679629e46bd3b7.68657112.jpg"
+    name: "Wero ou PayLib",
+    logo: "/wero.png"
   },
-  {
-    name: "Carte Bancaire",
-    logo: "/cb.png"
-  },
+  //{
+   // name: "Carte Bancaire",
+  //  logo: "/cb.png"
+ // },
   {
     name: "PayPal",
     logo: "/paypal.png"  // Assurez-vous d'ajouter le logo PayPal dans le dossier public
@@ -49,12 +54,6 @@ const PaymentMethods = () => {
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="mt-12 bg-white rounded-lg shadow-lg p-6">
-          <div className="text-center text-sm text-gray-500">
-            <p>Note : Le paiement en espèces est disponible auprès de nos agences partenaires au Gabon.</p>
-          </div>
         </div>
       </div>
     </section>

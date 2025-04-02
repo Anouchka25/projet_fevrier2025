@@ -5,7 +5,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    font-size: 18px; /* Augmentation de la taille de base du texte */
+    font-size: 18px;
   }
   
   body {

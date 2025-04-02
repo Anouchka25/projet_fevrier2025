@@ -1,340 +1,439 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { z } from 'zod';
-
-const userSchema = z.object({
-  email: z.string().email('Email invalide'),
-  password: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
-  firstName: z.string().min(2, 'Le prénom doit contenir au moins 2 caractères').optional(),
-  lastName: z.string().min(2, 'Le nom doit contenir au moins 2 caractères').optional(),
-  country: z.enum(['GA', 'FR', 'CN', 'US', 'CA'], 'Pays non valide').optional()
-});
-
-type UserFormData = z.infer<typeof userSchema>;
+import { useAuth } from './AuthProvider';
+import { sendWelcomeEmail } from '../../lib/onesignal';
+import Navbar from '../Navbar';
 
 const AuthForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, refreshSession } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState<UserFormData>({
-    email: '',
-    password: '',
-    firstName: '',
-    lastName: '',
-    country: 'GA'
-  });
-  const [errors, setErrors] = useState<Partial<Record<keyof UserFormData | 'auth', string>>>({});
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Reset form when switching between login/signup
+  // Form fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [country, setCountry] = useState('FR');
+  const [phone, setPhone] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
   useEffect(() => {
-    setErrors({});
-    setFormData({
-      email: '',
-      password: '',
-      firstName: '',
-      lastName: '',
-      country: 'GA'
-    });
-  }, [isLogin]);
+    if (user) {
+      // Get redirect URL and transfer details from state
+      const state = location.state as { from?: string; transferDetails?: string } | null;
+      const from = state?.from || '/dashboard';
+
+      // If coming from a transfer, restore the details
+      if (state?.transferDetails) {
+        localStorage.setItem('transferDetails', state.transferDetails);
+      }
+
+      navigate(from, { replace: true });
+    }
+  }, [user, navigate, location]);
 
   const validateForm = () => {
-    try {
-      if (isLogin) {
-        z.object({
-          email: userSchema.shape.email,
-          password: userSchema.shape.password,
-        }).parse({
-          email: formData.email,
-          password: formData.password,
-        });
-      } else {
-        userSchema.parse(formData);
+    if (!isLogin) {
+      if (!firstName.trim()) {
+        setError('Le prénom est requis');
+        return false;
       }
-      setErrors({});
-      return true;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: typeof errors = {};
-        error.errors.forEach((err) => {
-          if (err.path[0]) {
-            newErrors[err.path[0] as keyof UserFormData] = err.message;
-          }
-        });
-        setErrors(newErrors);
+      if (!lastName.trim()) {
+        setError('Le nom est requis');
+        return false;
       }
-      return false;
+      if (!phone.trim()) {
+        setError('Le numéro de téléphone est requis');
+        return false;
+      }
+      if (password !== confirmPassword) {
+        setError('Les mots de passe ne correspondent pas');
+        return false;
+      }
+      if (password.length < 6) {
+        setError('Le mot de passe doit contenir au moins 6 caractères');
+        return false;
+      }
+      if (!termsAccepted) {
+        setError('Vous devez accepter les conditions générales');
+        return false;
+      }
     }
+    return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setLoading(true);
-    setErrors({});
+    setError(null);
+    setSuccess(null);
 
     try {
+      // Clear any existing session
+      await supabase.auth.signOut();
+      
       if (isLogin) {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email: formData.email.toLowerCase().trim(),
-          password: formData.password
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.toLowerCase().trim(),
+          password
         });
 
         if (signInError) {
           if (signInError.message === 'Invalid login credentials') {
-            setErrors({ auth: 'Email ou mot de passe incorrect' });
-          } else {
-            setErrors({ auth: 'Une erreur est survenue lors de la connexion' });
+            throw new Error('Email ou mot de passe incorrect');
           }
-          return;
+          throw signInError;
         }
-
-        if (!data.user) {
-          setErrors({ auth: 'Utilisateur non trouvé' });
-          return;
-        }
-
-        // Get user profile
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
-
-        if (userError) {
-          setErrors({ auth: 'Erreur lors de la récupération des données utilisateur' });
-          return;
-        }
-
-        // Redirect to appropriate page
-        const pendingTransfer = localStorage.getItem('transferDetails');
-        navigate(pendingTransfer ? '/transfer' : '/dashboard');
       } else {
-        // Sign up
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: formData.email.toLowerCase().trim(),
-          password: formData.password,
+        const { data: { user: newUser }, error: signUpError } = await supabase.auth.signUp({
+          email: email.toLowerCase().trim(),
+          password,
           options: {
             data: {
-              first_name: formData.firstName?.trim(),
-              last_name: formData.lastName?.trim(),
-              country: formData.country
+              first_name: firstName,
+              last_name: lastName,
+              country,
+              phone,
+              terms_accepted: true,
+              terms_accepted_at: new Date().toISOString()
             }
           }
         });
 
-        if (signUpError) {
-          if (signUpError.message.includes('User already registered')) {
-            setErrors({ auth: 'Cet email est déjà utilisé' });
-          } else {
-            setErrors({ auth: 'Une erreur est survenue lors de l\'inscription' });
-          }
-          return;
-        }
-
-        if (!data.user) {
-          setErrors({ auth: 'Une erreur est survenue lors de l\'inscription' });
-          return;
-        }
+        if (signUpError) throw signUpError;
 
         // Create user profile
         const { error: profileError } = await supabase
           .from('users')
           .insert([{
-            id: data.user.id,
-            email: formData.email.toLowerCase().trim(),
-            first_name: formData.firstName?.trim(),
-            last_name: formData.lastName?.trim(),
-            country: formData.country
+            id: newUser?.id,
+            email: email.toLowerCase().trim(),
+            first_name: firstName,
+            last_name: lastName,
+            country,
+            phone,
+            terms_accepted: true,
+            terms_accepted_at: new Date().toISOString()
           }]);
 
-        if (profileError) {
-          // If profile creation fails, sign out
-          await supabase.auth.signOut();
-          setErrors({ auth: 'Erreur lors de la création du profil' });
-          return;
+        if (profileError) throw profileError;
+
+        // Send welcome email
+        if (newUser) {
+          await sendWelcomeEmail(
+            newUser.id,
+            email.toLowerCase().trim(),
+            `${firstName} ${lastName}`
+          );
         }
 
-        // Redirect to appropriate page
-        const pendingTransfer = localStorage.getItem('transferDetails');
-        navigate(pendingTransfer ? '/transfer' : '/dashboard');
+        setSuccess('Inscription réussie ! Vous pouvez maintenant vous connecter.');
+        setIsLogin(true);
+        return;
       }
-    } catch (error) {
-      console.error('Auth error:', error);
-      setErrors({
-        auth: 'Une erreur inattendue est survenue. Veuillez réessayer.'
-      });
+
+      // Force refresh session
+      await refreshSession();
+
+    } catch (err) {
+      console.error('Erreur d\'authentification:', err);
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    // Clear error when field is modified
-    if (errors[name as keyof UserFormData]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name as keyof UserFormData];
-        return newErrors;
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Veuillez entrer votre email');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
       });
+
+      if (error) throw error;
+
+      setSuccess('Un email de réinitialisation vous a été envoyé. Veuillez vérifier votre boîte de réception.');
+      setShowForgotPassword(false);
+    } catch (err) {
+      console.error('Erreur:', err);
+      setError('Une erreur est survenue lors de l\'envoi de l\'email de réinitialisation');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto p-8 bg-white rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold text-gray-900 mb-8">
-        {isLogin ? 'Connexion' : 'Inscription'}
-      </h2>
-
-      {errors.auth && (
-        <div className="mb-6 p-4 rounded-md bg-red-50 border border-red-200">
-          <p className="text-sm text-red-600">{errors.auth}</p>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Email
-          </label>
-          <input
-            type="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
-              errors.email ? 'border-red-300' : 'border-gray-300'
-            }`}
-            placeholder="votre@email.com"
-            required
-          />
-          {errors.email && (
-            <p className="mt-2 text-sm text-red-600">{errors.email}</p>
-          )}
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      
+      <div className="flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            {isLogin ? 'Connexion' : 'Inscription'}
+          </h2>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Mot de passe
-          </label>
-          <input
-            type="password"
-            name="password"
-            value={formData.password}
-            onChange={handleChange}
-            className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
-              errors.password ? 'border-red-300' : 'border-gray-300'
-            }`}
-            placeholder="••••••••"
-            required
-          />
-          {errors.password && (
-            <p className="mt-2 text-sm text-red-600">{errors.password}</p>
-          )}
-        </div>
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+            {error && (
+              <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
 
-        {!isLogin && (
-          <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Prénom
-              </label>
-              <input
-                type="text"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-                className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
-                  errors.firstName ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="John"
-                required
-              />
-              {errors.firstName && (
-                <p className="mt-2 text-sm text-red-600">{errors.firstName}</p>
+            {success && (
+              <div className="mb-4 bg-green-50 border-l-4 border-green-400 p-4">
+                <p className="text-sm text-green-700">{success}</p>
+              </div>
+            )}
+
+            {showForgotPassword ? (
+              <div>
+                <div className="mb-4">
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col space-y-4">
+                  <button
+                    onClick={handleForgotPassword}
+                    disabled={loading}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50"
+                  >
+                    {loading ? 'Envoi en cours...' : 'Envoyer le lien de réinitialisation'}
+                  </button>
+
+                  <button
+                    onClick={() => setShowForgotPassword(false)}
+                    className="text-sm text-yellow-600 hover:text-yellow-500"
+                  >
+                    Retour à la connexion
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleAuth} className="space-y-6">
+                {!isLogin && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+                          Prénom
+                        </label>
+                        <input
+                          id="firstName"
+                          type="text"
+                          required
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                          Nom
+                        </label>
+                        <input
+                          id="lastName"
+                          type="text"
+                          required
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                        Téléphone
+                      </label>
+                      <input
+                        id="phone"
+                        type="tel"
+                        required
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                        placeholder="+33612345678"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="country" className="block text-sm font-medium text-gray-700">
+                        Pays
+                      </label>
+                      <select
+                        id="country"
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value)}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                      >
+                        <option value="FR">France</option>
+                        <option value="BE">Belgique</option>
+                        <option value="DE">Allemagne</option>
+                        <option value="GA">Gabon</option>
+                        <option value="CN">Chine</option>
+                        <option value="US">États-Unis</option>
+                        <option value="CA">Canada</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                    Email
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Mot de passe
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="password"
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                {!isLogin && (
+                  <>
+                    <div>
+                      <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                        Confirmer le mot de passe
+                      </label>
+                      <div className="mt-1">
+                        <input
+                          id="confirmPassword"
+                          type="password"
+                          required
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center">
+                      <input
+                        id="terms"
+                        type="checkbox"
+                        checked={termsAccepted}
+                        onChange={(e) => setTermsAccepted(e.target.checked)}
+                        className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
+                        J'accepte les{' '}
+                        <Link
+                          to="/conditions-generales"
+                          target="_blank"
+                          className="font-medium text-yellow-600 hover:text-yellow-500"
+                        >
+                          conditions générales
+                        </Link>
+                        {' '}et la{' '}
+                        <Link
+                          to="/politique-de-confidentialite"
+                          target="_blank"
+                          className="font-medium text-yellow-600 hover:text-yellow-500"
+                        >
+                          politique de confidentialité
+                        </Link>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50"
+                  >
+                    {loading ? 'Chargement...' : (isLogin ? 'Se connecter' : "S'inscrire")}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="mt-6 flex flex-col space-y-4">
+              {isLogin && !showForgotPassword && (
+                <button
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-center text-sm text-yellow-600 hover:text-yellow-500 cursor-pointer"
+                >
+                  Mot de passe oublié ?
+                </button>
               )}
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nom
-              </label>
-              <input
-                type="text"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-                className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
-                  errors.lastName ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="Doe"
-                required
-              />
-              {errors.lastName && (
-                <p className="mt-2 text-sm text-red-600">{errors.lastName}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pays
-              </label>
-              <select
-                name="country"
-                value={formData.country}
-                onChange={handleChange}
-                className={`mt-1 block w-full rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm border-2 ${
-                  errors.country ? 'border-red-300' : 'border-gray-300'
-                }`}
-                required
+              <button
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError(null);
+                  setSuccess(null);
+                  setShowForgotPassword(false);
+                  // Reset form fields
+                  if (isLogin) {
+                    setFirstName('');
+                    setLastName('');
+                    setPhone('');
+                    setCountry('FR');
+                    setConfirmPassword('');
+                    setTermsAccepted(false);
+                  }
+                }}
+                className="text-center text-sm text-yellow-600 hover:text-yellow-500"
               >
-                <option value="GA">Gabon</option>
-                <option value="FR">France</option>
-                <option value="CN">Chine</option>
-                <option value="US">États-Unis</option>
-                <option value="CA">Canada</option>
-              </select>
-              {errors.country && (
-                <p className="mt-2 text-sm text-red-600">{errors.country}</p>
-              )}
+                {isLogin ? "Pas de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
+              </button>
             </div>
-          </>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Chargement...' : (isLogin ? 'Se connecter' : "S'inscrire")}
-        </button>
-      </form>
-
-      <div className="mt-6 text-center space-y-4">
-        <button
-          onClick={() => setIsLogin(!isLogin)}
-          className="text-base text-yellow-600 hover:text-yellow-500"
-        >
-          {isLogin ? "Pas encore de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
-        </button>
-
-        {isLogin && (
-          <div>
-            <Link
-              to="/forgot-password"
-              className="text-base text-yellow-600 hover:text-yellow-500"
-            >
-              Mot de passe oublié ?
-            </Link>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
