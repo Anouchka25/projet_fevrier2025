@@ -64,12 +64,38 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           }),
         });
 
+        // Check if response is ok before trying to parse JSON
         if (!response.ok) {
-          const errorData = await response.json();
+          // Try to parse error response as JSON, but handle case where it might not be valid JSON
+          let errorData;
+          try {
+            errorData = await response.json();
+          } catch (jsonError) {
+            console.error('Error parsing JSON response:', jsonError);
+            throw new Error(`Erreur lors de la création de session de paiement (${response.status})`);
+          }
           throw new Error(errorData.message || `Erreur lors de la création de session de paiement (${response.status})`);
         }
 
-        const data = await response.json();
+        // Check for empty response
+        const contentType = response.headers.get('content-type');
+        if (response.status === 204 || !contentType || !contentType.includes('application/json')) {
+          throw new Error('Réponse invalide du serveur de paiement');
+        }
+
+        // Parse JSON with error handling
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('Error parsing JSON response:', jsonError);
+          throw new Error('Réponse JSON invalide du serveur de paiement');
+        }
+
+        // Validate response data
+        if (!data) {
+          throw new Error('Aucune donnée reçue du serveur de paiement');
+        }
 
         // Redirect to Checkout.com hosted payment page
         if (data.redirectUrl) {
